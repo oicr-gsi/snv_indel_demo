@@ -22,9 +22,12 @@ class main(plugin_base):
     ASSAY = 'WGS'
     SEQTYPE = 'GENOME'
     GENOME = 'hg38'
+    HAS_EXPRESSION_DATA = False
     
     def configure(self, config):
       config = self.apply_defaults(config)
+      #add if cbioid undefined, set to studyid, but can be entered in ini
+      #add if cna_file undefined, set to "CNA_file" in working: os.path.join(self.work_dir, sic.CNA_SIMPLE)
       return config  
 
     def extract(self, config):
@@ -33,27 +36,24 @@ class main(plugin_base):
       data = self.get_starting_plugin_data(wrapper, self.PLUGIN_VERSION)
       oncotree = config[self.identifier]['oncotree_code']
 
+      cbioid = config[self.identifier]['study_title']
       tumour_id = config[self.identifier]['tumour_id']
       normal_id = config[self.identifier]['normal_id']
       maf_file = config[self.identifier]['maf_file']
-      studyid = config[self.identifier]['study_title']
+      cna_file = config[self.identifier]['cna_file']
 
-        # sequenza_path = self.config[self.identifier]['sequenza_file']
-        # sequenza_gamma = int(self.config[self.identifier]['sequenza_gamma'])
-        # sequenza_solution = self.config[self.identifier]['sequenza_solution']
-        # gep_file = self.config[self.identifier]['gep_file']
+      # gep_file = self.config[self.identifier]['gep_file']
 
-      whizbam_url = preprocess.construct_whizbam_link(sic.WHIZBAM_BASE_URL, studyid, tumour_id, normal_id, self.SEQTYPE, self.GENOME)
+      whizbam_url = preprocess.construct_whizbam_link(sic.WHIZBAM_BASE_URL, cbioid, tumour_id, normal_id, self.SEQTYPE, self.GENOME)
 
       preprocess(work_dir).run_R_code(whizbam_url, self.ASSAY, maf_file, tumour_id, oncotree)
+      data_table = data_extractor(work_dir).build_small_mutations_and_indels(os.path.join(work_dir, sic.MUTATIONS_EXTENDED_ONCOGENIC), cna_file, oncotree, self.ASSAY)
       mutations_file = os.path.join(work_dir, sic.MUTATIONS_EXTENDED)
-      mutations_extended_file = os.path.join(work_dir, sic.MUTATIONS_EXTENDED_ONCOGENIC)
-      data_table = data_extractor(work_dir).build_small_mutations_and_indels(mutations_extended_file, oncotree, self.ASSAY)
       results = {
           sic.BODY: data_table,
           sic.CLINICALLY_RELEVANT_VARIANTS: len(data_table),
           sic.TOTAL_VARIANTS: data_extractor(work_dir).read_somatic_mutation_totals(mutations_file),
-          rc.HAS_EXPRESSION_DATA: False,
+          rc.HAS_EXPRESSION_DATA: self.HAS_EXPRESSION_DATA,
           sic.VAF_PLOT: data_extractor(work_dir).write_vaf_plot(work_dir)
       }
       data['results'] = results
@@ -66,15 +66,13 @@ class main(plugin_base):
     def specify_params(self):
       required = [
             'maf_file',
-            'gep_file',
-            'sequenza_file',
-            'sequenza_gamma',
-            'sequenza_solution',
             'oncotree_code',
-            'tcgacode',
             'tumour_id',
             'normal_id',
-            'study_title'
+            'study_title',
+            'cna_file'
+          #   'gep_file',
+          #   'tcgacode',
         ]
       for key in required:
           self.add_ini_required(key)
